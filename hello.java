@@ -8,8 +8,12 @@ public class hello {
 		// TODO Auto-generated method stub
 	//BaliCompiler.compiler("good.while.bali");
     BaliCompiler simple_compiler = new BaliCompiler();
+    //simple_compiler.compiler("main.bali");
     //simple_compiler.compiler("simple_bali_test.bali");
-    simple_compiler.compiler("one_func.bali");
+    //simple_compiler.compiler("one_func.bali");
+    //String prg = simple_compiler.compiler("good.while.bali");
+    String prg = simple_compiler.compiler("abs.bali");
+    System.out.println(prg);
     }
 
 }

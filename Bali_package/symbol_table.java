@@ -48,7 +48,7 @@ public class symbol_table{
     
     public int get_param_offset(String variable){
         if (params_list.contains(variable)) {
-            return params_list.indexOf(variable);
+            return -1*(params_list.indexOf(variable) + 1);
         }else{
             System.out.println("ERROR. this variable is not defined in the symbol table\n");
             print_symbol_table_content();
@@ -60,7 +60,7 @@ public class symbol_table{
     
     public int get_local_offset(String variable){
         if (locals_list.contains(variable)) {
-            return locals_list.indexOf(variable);
+            return (locals_list.indexOf(variable)) + 2;
         }else{
             System.out.println("ERROR. this variable is not defined in the symbol table\n");
             print_symbol_table_content();

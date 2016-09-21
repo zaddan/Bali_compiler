@@ -14,7 +14,7 @@ public class function_table{
     public void add_function(String function_name, int n_args, String code){
         function_info my_foo =  new function_info(n_args, code);
         function_code_table.put(function_name, my_foo);
-        System.out.println(get_function_code(function_name));
+        //System.out.println(get_function_code(function_name));
     }
    
 

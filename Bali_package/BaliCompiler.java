@@ -9,6 +9,9 @@ import java.util.LinkedList;
 import Bali_package.symbol_table;
 import Bali_package.function_table;
 
+//TODO: make sure the offsets for params are in the right order
+//TODO: make sure SP moves properly
+//include if else (I only have if at the moment)
 public class BaliCompiler
 {
     
@@ -41,7 +44,7 @@ public class BaliCompiler
 		{
 			SamTokenizer f = new SamTokenizer (fileName);
 			String pgm = getProgram(f);
-			return pgm;
+            return pgm;
 		} 
 		catch (Exception e) 
 		{
@@ -56,15 +59,20 @@ public class BaliCompiler
 		//generates the code for the program
 		try
 		{
-			String pgm="";
+			String prg="";
 		    //main_preparation();	
             while(f.peekAtKind()!=TokenType.EOF) // till EOF, find another method
 			{
-                getMethod(f);
+                prg += getMethod(f) + "\n\n";
             }
 		    	
-
-            return main_preparation() + prg_func_table.get_function_code("main");
+            prg += "\n\n\n"; 
+            prg += "PUSHIMM 0\n";
+            prg += "LINK\n";
+            prg += "JSR main\n";
+            prg += "POPFBR\n";
+            prg += "STOP\n";
+            return prg;
 		}
 		catch(Exception e)
 		{
@@ -85,7 +93,7 @@ public class BaliCompiler
         //method name
         f.match("int");
 		String methodName = f.getWord(); 
-		System.out.println(methodName);
+		//System.out.println(methodName);
 		
         function_end_label_ll.add(methodName);
         label_counter +=1;
@@ -94,7 +102,7 @@ public class BaliCompiler
         f.match('(');
 		String formals = getFormals(f);	     	
         f.match(')');  // must be an closing parenthesis
-        System.out.println("formals: " + formals); 
+        //System.out.println("formals: " + formals); 
         //System.out.println("End Of Formals"); 
         
         //fill up the symbol_table with the formals
@@ -111,20 +119,24 @@ public class BaliCompiler
         f.match('{');
 		String body = getBody(f, method_symbol_table);
 		f.match('}');  // must be an closing parenthesis
-        System.out.println("body:\n" + body + "\n"); 
+        //System.out.println("body:\n" + body + "\n"); 
         //System.out.println("End Of body"); 
         
-        
-        function_code = "ADDSP " + method_symbol_table.get_n_locals() + "\n";
+        function_code += methodName + ":";
+        function_code += "ADDSP " + method_symbol_table.get_n_locals() + "\n";
         function_code += body;
-        String end_label = "fEnd"+label_counter;
+        String end_label = "\nfEnd"+methodName;
         function_code += end_label +":";
-        function_code += "TODO: STOREOFF rv slot" + "\n"; 
+        function_code += "STOREOFF " + -1*(method_symbol_table.get_n_params() + 1) + "\n"; 
+        function_code  += "ADDSP" + -1*(method_symbol_table.get_n_locals()) + "\n";
         function_code += "JUMPIND\n";
         //update function_table
 
         prg_func_table.add_function(methodName, formals_splited.length, function_code );
-        return null;
+        
+        
+        function_end_label_ll.removeLast();
+        return function_code;
 	}
 	
     String getWhile(SamTokenizer f, symbol_table method_symbol_table){
@@ -144,8 +156,8 @@ public class BaliCompiler
         label_counter +=1;
 
         String while_code = "JUMP " + while_begin_label + "\n";
-        while_code += predicate_true_label + ":" + while_body;
-        while_code += while_begin_label + ":" + while_predicate; 
+        while_code += "\n" + predicate_true_label + ":" + while_body;
+        while_code += "\n" + while_begin_label + ":" + while_predicate; 
         while_code += "JUMPC " +  predicate_true_label + "\n";
         return while_code;
     }
@@ -156,12 +168,16 @@ public class BaliCompiler
         f.match(')');
         String false_label =  "Label" + label_counter;
         label_counter +=1;
-        String if_false = "JUMPC " + false_label + "\n";
+        String true_label =  "Label" + label_counter;
+        label_counter +=1;
+        String if_true = "JUMPC " + true_label + "\n";
         
         String if_body = getStatement(f, method_symbol_table);  
          
         String if_code = if_predicate;
-        if_code += if_false;
+        if_code += if_true;
+        //if_code +=   where the false part goes
+        if_code += true_label +":"; 
         if_code += if_body;
         return if_code;
     }
@@ -171,9 +187,8 @@ public class BaliCompiler
         f.match(';');
         
         String return_label = "fEnd"+(String) function_end_label_ll.getLast();
-        function_end_label_ll.removeLast();
         
-        exp += "JUMP " + return_label + ":" + "\n"; 
+        exp += "JUMP " + return_label + "\n"; 
         return exp;
    }
    //TODO: if then else 
@@ -199,10 +214,35 @@ public class BaliCompiler
                             exp += getExp(f, method_symbol_table);
                             exp += "ADD\n";
                             f.match(')'); 
-                        }else if (nextOp == '-' ||  nextOp == '>' || nextOp == '<') {
+                        }else if (nextOp == '-'){
                             exp += someExp;
                             exp += getExp(f, method_symbol_table);
                             exp += "SUB\n";
+                            f.match(')'); 
+                        
+                        }else if (nextOp == '*'){
+                            exp += someExp;
+                            exp += getExp(f, method_symbol_table);
+                            exp += "TIMES\n";
+                            f.match(')'); 
+
+                        } else if(nextOp == '>'){
+                            exp += someExp;
+                            exp += getExp(f, method_symbol_table);
+                            exp += "CMP\n";
+                            exp += "ISPOS\n";
+                            f.match(')'); 
+                        }else if ( nextOp == '<') {
+                            exp += someExp;
+                            exp += getExp(f, method_symbol_table);
+                            exp += "CMP\n";
+                            exp += "ISPOS\n";
+                            f.match(')'); 
+                        }else if ( nextOp == '=') {
+                            exp += someExp;
+                            exp += getExp(f, method_symbol_table);
+                            exp += "CMP\n";
+                            exp += "ISNIL\n";
                             f.match(')'); 
                         }else{
                             System.out.println("this operator " + nextOp + " is not defined\n");
@@ -236,7 +276,13 @@ public class BaliCompiler
                             { 
                                 char nextOp = f.getOp();
                                 if( nextOp == ')') {
-                                    return caller_preparation() + prg_func_table.get_function_code(theWord); 
+                                    
+                                    String code = "";
+                                    code += "LINK\n";
+                                    code += "JSR " + function_name + "\n";
+                                    code += "POPFBR\n";
+                                    code += "ADDSP " + -1*prg_func_table.get_function_n_args(function_name) + "\n";
+                                    return code;
                                  }
                              }         
                         }
@@ -315,7 +361,7 @@ public class BaliCompiler
                      System.exit(1);
                  }else{
                      if (method_symbol_table.has_var(variable_name) == false){
-                        declaration += "PUSHIMM 0\n";
+                        //declaration += "PUSHIMM 0\n";
                         method_symbol_table.add_locals(variable_name);
                         method_symbol_table.add_variable(variable_name);
                      }
