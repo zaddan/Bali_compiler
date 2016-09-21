@@ -112,16 +112,32 @@ public class BaliCompiler
 	}
 	
     String getWhile(SamTokenizer f, symbol_table method_symbol_table){
-        String while_body = ""; 
         f.match('(');
-        while_body +="(";
-        String while_predication = getExp(f, method_symbol_table);
+        String while_predicate = getExp(f, method_symbol_table);
         f.match(')');
-        while_body +=")";
-        return while_body; 
+        f.match('{'); 
+        String while_body = getBody(f, method_symbol_table);  
+        f.match('}'); 
+        return while_predicate + while_body; 
     }
     
+    String getIf(SamTokenizer f, symbol_table method_symbol_table){
+        f.match('(');
+        String if_predicate = getExp(f, method_symbol_table);
+        f.match(')');
+        String if_body = getStatement(f, method_symbol_table);  
+        return if_predicate + if_body; 
+    }
     
+   String getReturn(SamTokenizer f, symbol_table method_symbol_table){
+        String exp = getExp(f, method_symbol_table);  
+        f.match(';');
+        return exp;
+   }
+    
+
+
+
     String getExp(SamTokenizer f, symbol_table method_symbol_table) 
 	{
         String exp = ""; 
@@ -141,7 +157,7 @@ public class BaliCompiler
                             exp += getExp(f, method_symbol_table);
                             exp += "ADD\n";
                             f.match(')'); 
-                        }else if (nextOp == '-') {
+                        }else if (nextOp == '-' ||  nextOp == '>' || nextOp == '<') {
                             exp += someExp;
                             exp += getExp(f, method_symbol_table);
                             exp += "SUB\n";
@@ -217,7 +233,7 @@ public class BaliCompiler
     
     
     public 	boolean IsBlockKeyWord(String in_string){
-		List<String> messages = Arrays.asList("while", "return!", "if");
+		List<String> messages = Arrays.asList("while", "return", "if");
         return messages.contains(in_string);
     }
 
@@ -333,20 +349,26 @@ public class BaliCompiler
         return line;
     }
     
-    String getKeyWordExp(SamTokenizer f, symbol_table method_symbol_table) {
+    String getBlockKeyWordExp(SamTokenizer f, symbol_table method_symbol_table) {
         String body = "";
         String current_word = f.getWord(); 
         
         if(current_word.equals("while")){ // is it a while
-            f.pushBack(); 
-            String while_body= getWhile(f, method_symbol_table);
-            body += while_body;
-        }else{//error out other wise
+            //f.pushBack(); 
+            body += getWhile(f, method_symbol_table);
+        }else if (current_word.equals("if")){
+            body += getIf(f, method_symbol_table);
+        }else if (current_word.equals("return")){
+            body += getReturn(f, method_symbol_table);
+        }
+        else{//error out other wise
             System.out.println("ERROR: not sure what to do with this: " + current_word + " as a keyword\n");
             System.exit(0);
         }
         return body;
     }
+    
+    
     String getStatement(SamTokenizer f, symbol_table method_symbol_table){
         //String current_token =  f.peekAtKind(); //take a peek the word
         String exp; 
@@ -378,7 +400,7 @@ public class BaliCompiler
                     return declaration;
                 }
                 if(IsBlockKeyWord(theWord)){ //this includes blocks and declarations
-                    return getKeyWordExp(f, method_symbol_table);
+                    return getBlockKeyWordExp(f, method_symbol_table);
                 }
                 else if (prg_func_table.has_func(theWord)){ //it's a function call
 			        exp = getExp(f, method_symbol_table); 
