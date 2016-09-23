@@ -172,6 +172,7 @@ public class BaliCompiler
         label_counter +=1;
         String if_true = "JUMPC " + true_label + "\n";
         
+        //TODO possibly change to getBody 
         String if_body = getStatement(f, method_symbol_table);  
          
         String if_code = if_predicate;
@@ -204,7 +205,7 @@ public class BaliCompiler
                 //return "PUSHIMM " + f.getInt() + "\n";
             case OPERATOR:  
             {
-                switch(f.getOp()){
+                switch(f.getOp()){//TODO make sure all the operators are covered
                     case ('('):
                     {
                         String someExp = getExp(f, method_symbol_table); 
@@ -276,7 +277,6 @@ public class BaliCompiler
                             { 
                                 char nextOp = f.getOp();
                                 if( nextOp == ')') {
-                                    
                                     String code = "";
                                     code += "LINK\n";
                                     code += "JSR " + function_name + "\n";
@@ -299,7 +299,7 @@ public class BaliCompiler
                         System.out.println("this variable is not defined\n");
                         System.exit(0);
                     }
-                    return  "PUSHOFF " + offSet +";\n";
+                    return  "PUSHOFF " + offSet +";\n";//actually loading 
                 }
             }
             default:   return "ERROR\n";
@@ -364,6 +364,9 @@ public class BaliCompiler
                         //declaration += "PUSHIMM 0\n";
                         method_symbol_table.add_locals(variable_name);
                         method_symbol_table.add_variable(variable_name);
+                     }else{
+                     System.out.println("Already defined\n");
+                     System.exit(1);
                      }
                  }
                  
@@ -493,6 +496,7 @@ public class BaliCompiler
         //String current_token =  f.peekAtKind(); //take a peek the word
         String exp; 
         switch(f.peekAtKind()) {
+            //TODO fix this /only word
             case INTEGER: //do nothing
             {
                return "PUSHIMM " +f.getInt() + "\n"; //convert to string
