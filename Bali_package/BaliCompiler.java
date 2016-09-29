@@ -44,6 +44,7 @@ public class BaliCompiler
 		{
 			SamTokenizer f = new SamTokenizer (fileName);
 			String pgm = getProgram(f);
+			System.out.println(pgm);
 			return pgm;
 		} 
 		catch (Exception e) 
@@ -61,17 +62,17 @@ public class BaliCompiler
 		{
 			String prg="";
 			//main_preparation();	
+			prg += "PUSHIMM 0\n";
+			prg += "LINK\n";
+			prg += "JSR main\n";
+			prg += "POPFBR\n";
+			prg += "STOP\n";
 			while(f.peekAtKind()!=TokenType.EOF) // till EOF, find another method
 			{
 				prg += getMethod(f) + "\n\n";
 			}
 
 			prg += "\n\n\n"; 
-			prg += "PUSHIMM 0\n";
-			prg += "LINK\n";
-			prg += "JSR main\n";
-			prg += "POPFBR\n";
-			prg += "STOP\n";
 			return prg;
 		}
 		catch(Exception e)
@@ -114,10 +115,10 @@ public class BaliCompiler
 		//System.out.println("End Of Formals"); 
 
 		//fill up the symbol_table with the formals
-		String[] formals_splited= formals.split(" ");
-		for (int i=0; i< formals_splited.length; i++){
-			method_symbol_table.add_variable(formals_splited[i]);
-			method_symbol_table.add_params(formals_splited[i]);
+		String[] formals_splitted= formals.split(" ");
+		for (int i=0; i< formals_splitted.length; i++){
+			method_symbol_table.add_variable(formals_splitted[i]);
+			method_symbol_table.add_params(formals_splitted[i]);
 		}
 
 		//callee prepartion 
@@ -140,33 +141,37 @@ public class BaliCompiler
 		function_code += "JUMPIND\n";
 		//update function_table
 
-		prg_func_table.add_function(methodName, formals_splited.length, function_code );
+		prg_func_table.add_function(methodName, formals_splitted.length, function_code );
 
 
 		function_end_label_ll.removeLast();
 		return function_code;
 	}
 
+	String getBreak(SamTokenizer f, symbol_table method_symbol_table){
+		f.match('}');
+		//TODO: LAbel here?
+		String break_string="";
+		return break_string;
+	}
+
 	String getWhile(SamTokenizer f, symbol_table method_symbol_table){
 		f.match('(');
 		String while_predicate = getExp(f, method_symbol_table);
 		f.match(')');
-		f.match('{'); 
-		String while_body = getBody(f, method_symbol_table);  
-		f.match('}'); 
-
+		String while_body = getStatement(f, method_symbol_table);  
 
 		String while_begin_label =  "Label" + label_counter;
 		label_counter +=1;
 
-
 		String predicate_true_label =  "Label" + label_counter;
 		label_counter +=1;
 
-		String while_code = "JUMP " + while_begin_label + "\n";
-		while_code += "\n" + predicate_true_label + ":" + while_body;
-		while_code += "\n" + while_begin_label + ":" + while_predicate; 
+//TODO: Look at JUMPC to fix this code
+		String while_code = "\n" + while_begin_label + ":" + while_predicate; 
 		while_code += "JUMPC " +  predicate_true_label + "\n";
+		while_code += "\n" + predicate_true_label + ":" + while_body;
+		while_code += "JUMP " + while_begin_label + "\n";
 		return while_code;
 	}
 
@@ -174,20 +179,27 @@ public class BaliCompiler
 		f.match('(');
 		String if_predicate = getExp(f, method_symbol_table);
 		f.match(')');
-		String false_label =  "Label" + label_counter;
-		label_counter +=1;
+		String if_body = getStatement(f, method_symbol_table);  
+		f.match("else");
+		String else_body = getStatement(f, method_symbol_table);  
+
 		String true_label =  "Label" + label_counter;
 		label_counter +=1;
+		String end_true_label =  "Label" + label_counter;
+		label_counter +=1;
 		String if_true = "JUMPC " + true_label + "\n";
+		String if_false = "JUMP " + end_true_label + "\n";
 
 		//TODO possibly change to getBody 
-		String if_body = getStatement(f, method_symbol_table);  
 
 		String if_code = if_predicate;
 		if_code += if_true;
-		//if_code +=   where the false part goes
+		if_code += else_body;
+		if_code += if_false;
 		if_code += true_label +":"; 
 		if_code += if_body;
+		if_code += end_true_label;
+
 		return if_code;
 	}
 
@@ -307,7 +319,7 @@ public class BaliCompiler
 							System.out.println("this variable is not defined\n");
 							System.exit(0);
 						}
-						return  "PUSHOFF " + offSet +";\n";//actually loading 
+						return  "PUSHOFF " + offSet +"\n";//actually loading 
 					}
 				}
 			default:   return "ERROR\n";
@@ -317,23 +329,39 @@ public class BaliCompiler
 
 	String getFormals(SamTokenizer f){
 		String formals = "";
+		int flag = 0;
 		do 
 		{
 			switch(f.peekAtKind()){
 				case OPERATOR:
-					{ 
-						char current_op =  f.getOp();
-						if (current_op == ')') {
-							//System.out.println("Formals are: " + formals);
-							f.pushBack(); 
-							return formals; 
-						}
+					char current_op =  f.getOp();
+					if (current_op == ')') {
+						//System.out.println("Formals are: " + formals);
+						f.pushBack(); 
+						if(flag==0 && formals.compareTo("")!=0)
+							System.out.println("ERROR : Invalid method param\n");
+						return formals; 
 					}
+					if (current_op == ',' && flag==0) {
+						System.out.println("ERROR : Invalid method param\n");
+					}			
+					if (current_op == ',' && flag==1) {
+						flag = 0;
+					}
+					break;
+				case WORD:
+					f.match("int");
+					if(f.peekAtKind()!=TokenType.WORD || flag!=0)
+						System.out.println("ERROR : Invalid method param\n");
+					flag = 1;
+					formals += f.getWord();
+					formals += " ";
+					break;
+				default:
+					System.out.println("ERROR : Invalid formals\n");
+
 			}
 
-			f.match("int");
-			formals += f.getWord();
-			formals += " ";
 
 		}while (true);
 	}
@@ -359,50 +387,48 @@ public class BaliCompiler
 	//2. declration w/o  instantiation
 	String getDeclaration(SamTokenizer f, symbol_table method_symbol_table){
 		String declaration= "";
-		String current_word = f.getWord();
-		if (current_word.equals("int")){ 
-			while(true){ 
-				String variable_name = f.getWord();
-				//System.out.print("variable_name: " + variable_name + "\n"); 
-				if (IsBlockKeyWord(variable_name) || IsTypeWord(variable_name)) { //sanity check for the name of the vars
-					System.out.println("ERROR: variable names can not be a keyword\n");
-					System.exit(1);
+		while(true){ 
+			if(f.peekAtKind()!=TokenType.WORD){
+				System.out.println("ERROR: variable names invalid\n");
+				System.exit(1);
+			}
+			String variable_name = f.getWord();
+			//System.out.print("variable_name: " + variable_name + "\n"); 
+			if (IsBlockKeyWord(variable_name) || IsTypeWord(variable_name)) { //sanity check for the name of the vars
+				System.out.println("ERROR: variable names can not be a keyword\n");
+				System.exit(1);
+			}else{
+				if (method_symbol_table.has_var(variable_name) == false){
+					//declaration += "PUSHIMM 0\n";
+					method_symbol_table.add_locals(variable_name);
+					method_symbol_table.add_variable(variable_name);
 				}else{
-					if (method_symbol_table.has_var(variable_name) == false){
-						//declaration += "PUSHIMM 0\n";
-						method_symbol_table.add_locals(variable_name);
-						method_symbol_table.add_variable(variable_name);
-					}else{
-						System.out.println("Already defined\n");
-						System.exit(1);
-					}
+					System.out.println("Already defined\n");
+					System.exit(1);
 				}
+			}
 
+			if(f.peekAtKind()==TokenType.OPERATOR){
 				//if also instantiated 
 				char next_char = f.getOp(); 
-				if (next_char == '=' ||  next_char == ','){
-					String variable_definition = getExp(f, method_symbol_table);
+				if (next_char == '='){
+					declaration += getExp(f, method_symbol_table); 
 					f.match(';'); 
-					declaration += variable_definition; 
-					int offSet = 0; 
-					if (method_symbol_table.has_param(variable_name)) {
-						offSet = method_symbol_table.get_param_offset(variable_name);
-					}else if (method_symbol_table.has_local(variable_name)) {
-						offSet = method_symbol_table.get_local_offset(variable_name);
-					}else{
-						System.out.println("this variable is not defined\n");
-						System.exit(0);
-					}
+					int offSet = method_symbol_table.get_local_offset(variable_name);
 					declaration += "STOREOFF " + offSet + "\n"; 
 					//System.out.print("variable_def: " + variable_definition); 
 					//declaration += variable_definition; 
 					break; 
+				} else if (next_char == ','){
+					declaration += getDeclaration(f,method_symbol_table);
 				}else if (next_char == ';'){
 					break;
 				}
+				else{
+					System.out.println("ERROR : Illegal operator in the declarations\n");
+					System.exit(1);
+				}
 			}
-		}else{
-			System.out.println(" declaration can not start with anything but an int\n");
 		}
 		return declaration; 
 	}
@@ -469,6 +495,7 @@ public class BaliCompiler
 					}
 			} 
 			counter +=1; 
+			line+=" ";
 			if (done == 1){
 				break;
 			}
@@ -485,12 +512,13 @@ public class BaliCompiler
 		String current_word = f.getWord(); 
 
 		if(current_word.equals("while")){ // is it a while
-			//f.pushBack(); 
 			body += getWhile(f, method_symbol_table);
 		}else if (current_word.equals("if")){
 			body += getIf(f, method_symbol_table);
 		}else if (current_word.equals("return")){
 			body += getReturn(f, method_symbol_table);
+		}else if (current_word.equals("break")) {
+			body += getBreak(f, method_symbol_table);
 		}
 		else{//error out other wise
 			System.out.println("ERROR: not sure what to do with this: " + current_word + " as a keyword\n");
@@ -501,42 +529,35 @@ public class BaliCompiler
 
 
 	String getStatement(SamTokenizer f, symbol_table method_symbol_table){
-		//String current_token =  f.peekAtKind(); //take a peek the word
-		String exp; 
+		String exp=""; 
 		switch(f.peekAtKind()) {
-			//TODO fix this /only word
-			case INTEGER: //do nothing
+			case OPERATOR:  
 				{
-					return "PUSHIMM " +f.getInt() + "\n"; //convert to string
+					char next_char = f.getOp(); 
+					if(next_char == '{') {
+						while(true) {
+							if(f.peekAtKind() == TokenType.OPERATOR) {
+								if(f.getOp() == '}')
+									break;
+								else
+									f.pushBack();	
+							}
+							exp+=getStatement(f, method_symbol_table);
+						}
+					}
+					else if (next_char == ';')
+						return exp;
+					else {
+						System.out.println("ERROR: Invalid operator in statement\n");
+						System.exit(0);
+					}
 				}
-			case OPERATOR:  //evaluate the expression
-				{
-					/* 
-					   char theOp =  f.getOp();
-					   f.pushBack();
-					   if (theOp == '}'){
-					   return "}"; 
-					   }
-					 */ 
-					exp = getExp(f, method_symbol_table); 
-					f.match(';');
-					return exp;
-				}
-			case WORD:  //either blocks, declarations, assignements, function calls
+			case WORD:  //either block key words or assignments
 				{
 					String theWord =  f.getWord();
 					f.pushBack();
-
-					if(IsTypeWord(theWord)){  // is it a declaration
-						String declaration = getDeclaration(f, method_symbol_table);
-						return declaration;
-					}
 					if(IsBlockKeyWord(theWord)){ //this includes blocks and declarations
 						return getBlockKeyWordExp(f, method_symbol_table);
-					}
-					else if (prg_func_table.has_func(theWord)){ //it's a function call
-						exp = getExp(f, method_symbol_table); 
-						f.match(';');
 					}else{ //variable assignment
 						return  getInstantiation(f, method_symbol_table);
 					}
@@ -551,15 +572,30 @@ public class BaliCompiler
 
 	String getBody(SamTokenizer f, symbol_table method_symbol_table){
 		String body = "";
+		String current_word = f.getWord();
+		f.pushBack();
+		while(IsTypeWord(current_word)){  // is it a declaration
+			f.getWord();
+			body += getDeclaration(f, method_symbol_table);
+			if(f.peekAtKind()==TokenType.WORD) {
+				current_word = f.getWord();
+				f.pushBack();
+			}
+			else
+				break;
 
+
+		}
 		do 
 		{
 			System.out.println("line is: " + returnLine(f) + "\n"); 
 			body += getStatement(f, method_symbol_table);  
-		}while (f.check('}') == false);
+		} while (f.check('}') == false);
 		f.pushBack();
 		return body;
 	}
+
+
         public static void main(String[] args) {
             try {
 		BaliCompiler myCompile = new BaliCompiler();
