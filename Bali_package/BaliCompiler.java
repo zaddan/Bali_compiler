@@ -131,13 +131,13 @@ public class BaliCompiler
 		//System.out.println("body:\n" + body + "\n"); 
 		//System.out.println("End Of body"); 
 
-		function_code += methodName + ":";
+		function_code += methodName + ": ";
 		function_code += "ADDSP " + method_symbol_table.get_n_locals() + "\n";
 		function_code += body;
 		String end_label = "\nfEnd"+methodName;
-		function_code += end_label +":";
+		function_code += end_label +": ";
 		function_code += "STOREOFF " + -1*(method_symbol_table.get_n_params() + 1) + "\n"; 
-		function_code  += "ADDSP" + -1*(method_symbol_table.get_n_locals()) + "\n";
+		function_code  += "ADDSP " + -1*(method_symbol_table.get_n_locals()) + "\n";
 		function_code += "JUMPIND\n";
 		//update function_table
 
@@ -161,16 +161,16 @@ public class BaliCompiler
 		f.match(')');
 		String while_body = getStatement(f, method_symbol_table);  
 
-		String while_begin_label =  "Label" + label_counter;
+		String while_begin_label =  "Label" + label_counter +": \n";
 		label_counter +=1;
 
-		String predicate_true_label =  "Label" + label_counter;
+		String predicate_true_label =  "Label" + label_counter ;
 		label_counter +=1;
 
 //TODO: Look at JUMPC to fix this code
-		String while_code = "\n" + while_begin_label + ":" + while_predicate; 
+		String while_code = "\n" + while_begin_label + ": \n" + while_predicate; 
 		while_code += "JUMPC " +  predicate_true_label + "\n";
-		while_code += "\n" + predicate_true_label + ":" + while_body;
+		while_code += "\n" + predicate_true_label + ": \n" + while_body;
 		while_code += "JUMP " + while_begin_label + "\n";
 		return while_code;
 	}
@@ -183,7 +183,7 @@ public class BaliCompiler
 		f.match("else");
 		String else_body = getStatement(f, method_symbol_table);  
 
-		String true_label =  "Label" + label_counter;
+		String true_label =  "Label" + label_counter ;
 		label_counter +=1;
 		String end_true_label =  "Label" + label_counter;
 		label_counter +=1;
@@ -196,7 +196,7 @@ public class BaliCompiler
 		if_code += if_true;
 		if_code += else_body;
 		if_code += if_false;
-		if_code += true_label +":"; 
+		if_code += true_label +": "; 
 		if_code += if_body;
 		if_code += end_true_label;
 
@@ -595,11 +595,175 @@ public class BaliCompiler
 		return body;
 	}
 
-
+		/*
         public static void main(String[] args) {
             try {
 		BaliCompiler myCompile = new BaliCompiler();
                 myCompile.compiler(args[0]);
             } catch (Exception e) { System.err.println (e); }
         }
+       */
+
+    public String translate_inst(String inst){
+        String translated_line = ""; 
+        String[] inst_splitted = inst.split(" ");
+        String operand = "";
+        String cmd = "";
+        boolean label_detected = false;
+        String [] SAM_ALU_cmds = {"ADD", "SUB", "TIMES", "ISPOS", "ISNEG", "ISNIL", "CMP", "PUSHIMM", "DUP"};
+        String [] SAM_LD_ST_cmds = {"PUSHOFF", "STOREOFF", "PUSHIND", "STOREIND"};
+        String [] SAM_REG_to_STACK_cmds = {"PUSHFBR", "POPFBR", "LINK"};
+        String [] SAM_STACK_to_REG_cmds = {"PUSHSP", "POPSP", "ADDSP"};
+        String [] SAM_CTRL_cmds = {"JUMP", "JUMPC"};
+        String [] SAM_PC_to_STACK= {"JSR", "JUMPIND", "JSRIND"};
+        int j_n,j_z, j_p = 0;
+
+        
+        //take care of empty line or label 
+        if (inst_splitted.length == 0) {
+                return "\n";
+        }else{//is there a label in the line
+            String first_word =  inst_splitted[0];
+            char[] letters = first_word.toCharArray();
+            if (letters[letters.length - 1] == ':'){
+                System.out.println("LABEL FOUND: " + first_word+ "\n");
+                label_detected = true; 
+            }
+        }
+
+
+        //get cmd and operand 
+        if (label_detected){
+          if (inst_splitted.length > 1) { //the line only contains the label
+              return inst;
+          }
+          
+          cmd = inst_splitted[1]; 
+          if (inst_splitted.length > 2) {
+              operand = inst_splitted[2];
+          }
+        }else{
+          cmd = inst_splitted[0]; 
+          if (inst_splitted.length > 1) {
+              operand = inst_splitted[1];
+          }
+        }
+        
+
+        //decode the instruction
+        if (Arrays.asList(SAM_ALU_cmds).contains(cmd)){
+            //SAM_ALU_cmds = ["ADD", "SUB", "TIMES", "ISPOS", "ISNEG", "ISNIL", "CMP"];
+            if (cmd.equals("ISPOS") || cmd.equals("ISNEG") || cmd.equals("ISNIL") || cmd.equals("CMP")){
+                System.out.println("this needs to get fixed later\n"); 
+                translated_line += "pop ebx\n";
+                if (cmd.equals("ISPOS")){
+                    translated_line+= "cmp 0, ebx\n";
+                }else if (cmd.equals("ISNEG")){
+                    translated_line+= "cmp ebx, 0\n";
+                }else if (cmd.equals("ISNIL")){
+                    translated_line+= "cmp 0, ebx\n";
+                }else if (cmd.equals("CMP")){
+                    translated_line+= "cmp 0, ebx\n";
+                }else if (cmd.equals("PUSHIMM")){
+                    translated_line += "push " + operand + "\n";
+                }else if (cmd.equals("DUP")){
+                    translated_line += "pob eax" +  "\n";
+                    translated_line += "push eax" +  "\n";
+                    translated_line += "push eax" +  "\n";
+                } 
+            }else{
+                translated_line += "pop ebx\n";
+                translated_line += "pop eax\n";
+                translated_line += cmd + "ebx, " + "eax\n";
+            }
+        }else if(Arrays.asList(SAM_LD_ST_cmds).contains(cmd)){
+            //SAM_LD_ST_cmds = ["PUSHOFF", "STOREOFF", "PUSHIND", "STOREIND"];
+            if (cmd.equals("PUSHOFF")){ 
+                translated_line += "mov eax, [ebp + " + operand +"]\n";
+                translated_line += "push eax\n"; 
+            }else if(cmd.equals("STOREOFF")) {
+                translated_line += "pop eax\n" ;
+                translated_line += "mov eax, [ebp + " + operand +"]\n";
+            }else if(cmd.equals("PUSHIND")) {
+                translated_line += "pop eax\n" ;
+                translated_line += "mov eax, [eax]\n";
+                translated_line += "push eax\n";
+            }else if(cmd.equals("STOREIND")){
+                translated_line += "pop eax\n" ;
+                translated_line += "pob ebx\n";
+                translated_line += "mov eax, [esp + ebx]\n";
+            }
+        }else if (Arrays.asList(SAM_REG_to_STACK_cmds).contains(cmd)){
+            //SAM_REG_to_STACK_cmds = ["PUSHSP", "POPSP", "ADDSP"];
+            if (cmd.equals("PUSHFBR")){ 
+                translated_line += "push ebp\n" ;
+            }else if(cmd.equals("POPFBR")){
+                translated_line += "pop ebp\n" ;
+            }else if(cmd.equals("LINK")){
+                translated_line += "push ebp\n" ;
+                translated_line += "mov ebp, esp\n" ;
+            }
+        }else if (Arrays.asList(SAM_STACK_to_REG_cmds).contains(cmd)){
+            //SAM_STACK_to_REG_cmds = ["PUSHSP", "POPSP", "ADDSP"];
+            if (cmd.equals("PUSHSP")){ 
+                translated_line += "push esp\n" ;
+            }else if(cmd.equals("POPSP")){
+                translated_line += "pop esp\n" ;
+            }else if(cmd.equals("ADDSP")){
+                translated_line += "add esp, " + "-"+operand + "\n";
+            }
+        }else if (Arrays.asList(SAM_CTRL_cmds).contains(cmd)){
+            //SAM_CTRL_cmds = ["JUMP", "JUMPC"];
+            if (cmd.equals("JUMP")){ 
+                translated_line += "jump " + operand + "\n";
+            }else if (cmd.equals("JUMPC")){ 
+                System.out.println("jump needs to be implemented\n");
+                //System.exit(0);  
+            }
+        }else if (Arrays.asList(SAM_PC_to_STACK).contains(cmd)){
+            //SAM_PC_to_STACK= ["JSR", "JUMPIND", "JSRIND"];
+            if (cmd.equals("JSR")){ 
+                translated_line += "call" + operand +"\n";
+            }
+            else if (cmd.equals("JUMPIND")){ 
+                translated_line += "ret\n";
+            } 
+            else if (cmd.equals("JUMPIND")){ 
+                /* 
+                   translated_line += "pop eax";
+                   translated_line += "call eax";
+                   */ 
+                System.out.println("JUMPIND should be implemented");
+            }
+        }else if(cmd.equals("STOP")){
+            ; 
+        }else{//find a label
+            System.out.println(cmd.length());
+            if (cmd.length() == 0) {
+                return "\n";
+            }else{
+              char[] letters = cmd.toCharArray();
+                if (letters[letters.length - 1] == ':'){
+                    System.out.println(cmd);
+                    System.exit(0);
+                }else{
+                    System.out.println("this command " + cmd + " is not defined\n");
+                    System.out.println("inst is: " + inst +"\n");
+                    System.exit(0);
+                }
+            
+            }
+        }
+        return translated_line; 
+    }
+    public String parse_SAM_code(String prg) {
+        //split the string based on the line 
+        String[] prg_lines = prg.split("\n");
+        String translated_prg = ""; 
+        for (String line: prg_lines){
+            translated_prg += translate_inst(line);
+        }
+        System.out.println(translated_prg);
+        return translated_prg; 
+    }
 }
