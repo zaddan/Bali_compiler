@@ -16,7 +16,13 @@ public class BaliCompiler
 {
     boolean GEN_SAM_CODE = false;
     boolean GEN_X86_CODE = true;
-	int label_counter = 0;
+    boolean less_than = false;	
+    boolean greater_than = false;
+    boolean equal = false;
+    
+    
+    
+    int label_counter = 0;
 	LinkedList function_end_label_ll = new LinkedList<String>();
 	public String callee_preparation(String formals){
 		return "callee_preparation;";
@@ -72,12 +78,12 @@ public class BaliCompiler
                 prg += "POPFBR\n";
                 prg += "STOP\n";
 		    }else if (GEN_X86_CODE) {
-                prg += "----->call to main needs to be fix\n"; 
-                prg += "call main\n";
+                prg +="section .txt\n global main" ;
+                //prg += "call main\n";
                 //prg += "add esp" + prg_func_table.get_function_n_args(function_name) + "\n"; //x86_c
-                prg += "pop edx\n"; //x86_c 
-                prg += "pop ecx\n"; //x86_c 
-                prg += "pop eax\n"; //x86_c 
+                //prg += "pop edx\n"; //x86_c 
+                //prg += "pop ecx\n"; //x86_c 
+                //prg += "pop eax\n"; //x86_c 
             }
             while(f.peekAtKind()!=TokenType.EOF) // till EOF, find another method
 			{
@@ -144,8 +150,8 @@ public class BaliCompiler
 		//System.out.println("End Of body"); 
 
 		
-        
-        function_code += methodName + ": ";
+        function_code +="\n\n;defintion of the function: " + methodName + "\n";
+        function_code += methodName + ": \n";
 		
         if (GEN_SAM_CODE) { 
             function_code += "ADDSP " + method_symbol_table.get_n_locals() + "\n";
@@ -156,13 +162,20 @@ public class BaliCompiler
             function_code  += "ADDSP " + -1*(method_symbol_table.get_n_locals()) + "\n";
             function_code += "JUMPIND\n";
 	    }else if(GEN_X86_CODE) {
+            function_code += ";---callee prologue\n";
             function_code += "push ebp\n";
             function_code += "mov ebp,esp\n";
-            function_code += "add esp,-" + method_symbol_table.get_n_locals() + "\n";
+            function_code += "add esp,-" + method_symbol_table.get_n_locals() + " ;make room for callee's local vars\n"; 
+            //we are not using esi, edi, ebx, ebp, esp  as general registers 
+            //at all in any of the expressions. so we don't need to push them
+            
+            function_code += ";---callee body \n";
             function_code += body;
             String end_label = "\nfEnd"+methodName;
-            function_code += end_label +": ";
-            function_code += "pop eax"; //putting return value in eax
+            function_code += end_label +": " + "\n";
+            
+            function_code += ";---callee epilogue\n";
+            //function_code += "pop eax\n"; //putting return value in eax
             function_code += "mov esp,ebp\n";
             function_code += "pop ebp\n";
             function_code += "ret\n";
@@ -204,7 +217,26 @@ public class BaliCompiler
             while_code += "\n" + predicate_true_label + ": \n" + while_body;
             while_code += "JUMP " + while_begin_label + "\n";
 	    }else if (GEN_X86_CODE) {
-            while_code += "------>jumping conditionally need to get fix \n";
+            if (less_than) {
+                less_than = false; 
+                greater_than = false; 
+                equal = false;
+                while_code += "jl " + predicate_true_label + "\n";
+            }else if (greater_than) {
+                less_than = false; 
+                greater_than = false; 
+                equal = false;
+                while_code += "jg " + predicate_true_label + "\n";
+            }else if (equal) {
+                less_than = false; 
+                greater_than = false; 
+                equal = false;
+                while_code += "je " + predicate_true_label + "\n";
+            }else {
+                System.out.println("the predicate doesn't seem to have been evaluated\n"); 
+                System.exit(0);
+            }
+
             while_code += "\n" + predicate_true_label + ": \n" + while_body;
             while_code += "jmp " + while_begin_label + "\n";
         }
@@ -221,7 +253,7 @@ public class BaliCompiler
 
 		String true_label =  "Label" + label_counter ;
 		label_counter +=1;
-		String end_true_label =  "Label" + label_counter;
+		String end_true_label =  "if_merge_Label" + label_counter;
 		label_counter +=1;
 	    String if_true = ""; 
         String if_false = ""; 
@@ -229,8 +261,27 @@ public class BaliCompiler
             if_true = "JUMPC " + true_label + "\n";
             if_false = "JUMP " + end_true_label + "\n";
         }else if (GEN_X86_CODE) {
-            if_true = "------>jumping conditionally need to get fix \n";
-            if_false = "jmp " + end_true_label + "\n";
+            if (less_than) {
+                less_than = false; 
+                greater_than = false; 
+                equal = false;
+                if_true += "jl " + true_label+ "\n";
+            }else if (greater_than) {
+                less_than = false; 
+                greater_than = false; 
+                equal = false;
+                if_true += "jg " + true_label+ "\n";
+            }else if (equal) {
+                less_than = false; 
+                greater_than = false; 
+                equal = false;
+                if_true += "je " + true_label+ "\n";
+            }else {
+                System.out.println("the predicate doesn't seem to have been evaluated\n"); 
+                System.exit(0);
+            }
+            
+            if_false = "jmp " + end_true_label + ":\n";
         }
 
 		//TODO possibly change to getBody 
@@ -239,9 +290,10 @@ public class BaliCompiler
 		if_code += if_true;
 		if_code += else_body;
 		if_code += if_false;
-		if_code += true_label +": "; 
-		if_code += if_body;
-		//if_code += end_true_label + ":";
+		if_code += true_label +": \n"; 
+        if_code += if_body;
+        if_code += end_true_label + "\n";
+        //if_code += end_true_label + ":";
 
 		return if_code;
 	}
@@ -254,7 +306,9 @@ public class BaliCompiler
 	    if (GEN_SAM_CODE) {	
             exp += "JUMP " + return_label + "\n"; 
         }else if (GEN_X86_CODE) {
-            ;
+            exp += "pop eax ;to follow the callee conv of placing return val in eax\n"; 
+            //exp += "pop eax\n";
+            exp += "jmp " + return_label + "\n"; 
         }
 		return exp;
 	}
@@ -279,7 +333,7 @@ public class BaliCompiler
 						case ('('):
 							{
 								String someExp = getExp(f, method_symbol_table); 
-								char nextOp =  f.getOp();
+                                char nextOp =  f.getOp();
 								if (nextOp == '+') {
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
@@ -328,7 +382,11 @@ public class BaliCompiler
                                     }else if (GEN_X86_CODE) {
                                         exp += "pop eax\n"; //x86_c
                                         exp += "pop ebx\n"; //x86_c
-                                        exp += "cmp eax, ebx\n"; //x86_c
+                                        exp += "cmp ebx, eax\n"; //x86_c
+                                        
+                                        less_than = false;	
+                                        greater_than = true;
+                                        equal = false;
                                     }
                                     f.match(')'); 
 								}else if ( nextOp == '<') {
@@ -340,7 +398,11 @@ public class BaliCompiler
                                     }else if (GEN_X86_CODE) {
                                         exp += "pop eax\n"; //x86_c
                                         exp += "pop ebx\n"; //x86_c
-                                        exp += "cmp ebx, eax\n"; //x86_c
+                                        exp += "cmp eax, ebx\n"; //x86_c
+                                    
+                                        less_than = true;	
+                                        greater_than = false;
+                                        equal = false;
                                     }
                                     f.match(')'); 
 								}else if ( nextOp == '=') {
@@ -353,6 +415,10 @@ public class BaliCompiler
                                         exp += "pop eax\n"; //x86_c
                                         exp += "pop ebx\n"; //x86_c
                                         exp += "cmp ebx, eax\n"; //x86_c
+                                        
+                                        less_than = false;	
+                                        greater_than = false;
+                                        equal = true;
                                     }
                                     f.match(')'); 
 								}else{
@@ -380,13 +446,17 @@ public class BaliCompiler
 						String function_name = f.getWord(); 
                         
                         if (GEN_X86_CODE){
+                            /* 
                             code += "push eax\n"; //x86_c 
                             code += "push ecx\n"; //x86_c 
                             code += "push edx\n"; //x86_c 
+                            */
+                            ;//not necessary to push the regs b/c we are treating 
+                            //x86 like a stack machine
                         }
                         char Op = f.getOp(); 
 						do{
-							getExp(f, method_symbol_table); 
+							code += getExp(f, method_symbol_table); 
 							switch(f.peekAtKind()){
 								case OPERATOR:
 									{ 
@@ -399,11 +469,20 @@ public class BaliCompiler
                                                 code += "POPFBR\n"; //SAM_c
                                                 code += "ADDSP " + -1*prg_func_table.get_function_n_args(function_name) + "\n"; //SAM_c
                                             }else if (GEN_X86_CODE){
-                                                code += "call\n"; //x86_c 
-                                                code += "add esp" + prg_func_table.get_function_n_args(function_name) + "\n"; //x86_c
+                                                
+                                                code += "\n;---caller preparation\n";
+                                                code += "call " + function_name + "\n"; //x86_c 
+                                                code += "\n;---caller wrapping up\n";
+                                                code += "add esp," + prg_func_table.get_function_n_args(function_name) + "\n"; //x86_c
+                                                code += "push eax;to put the return value on the top of the stack\n"; 
+                                                /* 
                                                 code += "pop edx\n"; //x86_c 
                                                 code += "pop ecx\n"; //x86_c 
                                                 code += "pop eax\n"; //x86_c 
+                                                ;//not necessary to push the regs b/c we are treating 
+                                                //x86 like a stack machine
+                                                 */ 
+                                            
                                             } 
                                             return code;
 										}
@@ -425,8 +504,9 @@ public class BaliCompiler
                         
                         
                         if (GEN_X86_CODE) {
-                            code += "pop eax";
-                            code += "move [ebp - " + offSet + "]" + "\n"; 
+                            
+                            code += "mov eax, [ebp + " + -1*offSet + "]" + "\n"; 
+                            code += "push eax" + "\n"; 
                             return  code;
                         }else if (GEN_SAM_CODE) {
                             code += "PUSHOFF " + offSet +"\n";//actually loading 
@@ -530,7 +610,8 @@ public class BaliCompiler
 				    if(GEN_SAM_CODE) {	
                         declaration += "STOREOFF " + offSet + "\n"; 
                     }else if (GEN_X86_CODE) {
-                        declaration += "mov [ebp -" + offSet + "]" + "\n"; 
+                        declaration += "pop eax \n";
+                        declaration += "mov [ebp +" + -1*offSet + "],eax" + "\n"; 
                     }
 					//System.out.print("variable_def: " + variable_definition); 
 					//declaration += variable_definition; 
@@ -579,6 +660,8 @@ public class BaliCompiler
 	    if(GEN_SAM_CODE) {	
             variable_definition +=  "STOREOFF " + offSet + "\n"; 
 		}else if (GEN_X86_CODE) {
+            
+            declaration += "pop eax \n";
             declaration += "mov [ebp -" + offSet + "]" + "\n"; 
         }
 
