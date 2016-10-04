@@ -14,7 +14,8 @@ import Bali_package.function_table;
 //include if else (I only have if at the moment)
 public class BaliCompiler
 {
-
+    boolean GEN_SAM_CODE = false;
+    boolean GEN_X86_CODE = true;
 	int label_counter = 0;
 	LinkedList function_end_label_ll = new LinkedList<String>();
 	public String callee_preparation(String formals){
@@ -36,7 +37,7 @@ public class BaliCompiler
 
 	public function_table prg_func_table = new function_table();
 
-	public String compiler(String fileName) 
+	public String code_gen(String fileName) 
 	{
 
 		//returns SaM code for program in file
@@ -55,19 +56,30 @@ public class BaliCompiler
 			return "STOP\n";
 		}
 	}
-	String getProgram(SamTokenizer f)
+	
+    
+    String getProgram(SamTokenizer f)
 	{
 		//generates the code for the program
 		try
 		{
 			String prg="";
 			//main_preparation();	
-			prg += "PUSHIMM 0\n";
-			prg += "LINK\n";
-			prg += "JSR main\n";
-			prg += "POPFBR\n";
-			prg += "STOP\n";
-			while(f.peekAtKind()!=TokenType.EOF) // till EOF, find another method
+		    if(GEN_SAM_CODE) {	
+                prg += "PUSHIMM 0\n";
+                prg += "LINK\n";
+                prg += "JSR main\n";
+                prg += "POPFBR\n";
+                prg += "STOP\n";
+		    }else if (GEN_X86_CODE) {
+                prg += "----->call to main needs to be fix\n"; 
+                prg += "call main\n";
+                //prg += "add esp" + prg_func_table.get_function_n_args(function_name) + "\n"; //x86_c
+                prg += "pop edx\n"; //x86_c 
+                prg += "pop ecx\n"; //x86_c 
+                prg += "pop eax\n"; //x86_c 
+            }
+            while(f.peekAtKind()!=TokenType.EOF) // till EOF, find another method
 			{
 				prg += getMethod(f) + "\n\n";
 			}
@@ -131,15 +143,33 @@ public class BaliCompiler
 		//System.out.println("body:\n" + body + "\n"); 
 		//System.out.println("End Of body"); 
 
-		function_code += methodName + ": ";
-		function_code += "ADDSP " + method_symbol_table.get_n_locals() + "\n";
-		function_code += body;
-		String end_label = "\nfEnd"+methodName;
-		function_code += end_label +": ";
-		function_code += "STOREOFF " + -1*(method_symbol_table.get_n_params() + 1) + "\n"; 
-		function_code  += "ADDSP " + -1*(method_symbol_table.get_n_locals()) + "\n";
-		function_code += "JUMPIND\n";
-		//update function_table
+		
+        
+        function_code += methodName + ": ";
+		
+        if (GEN_SAM_CODE) { 
+            function_code += "ADDSP " + method_symbol_table.get_n_locals() + "\n";
+            function_code += body;
+            String end_label = "\nfEnd"+methodName;
+            function_code += end_label +": ";
+            function_code += "STOREOFF " + -1*(method_symbol_table.get_n_params() + 1) + "\n"; 
+            function_code  += "ADDSP " + -1*(method_symbol_table.get_n_locals()) + "\n";
+            function_code += "JUMPIND\n";
+	    }else if(GEN_X86_CODE) {
+            function_code += "push ebp\n";
+            function_code += "mov ebp,esp\n";
+            function_code += "add esp,-" + method_symbol_table.get_n_locals() + "\n";
+            function_code += body;
+            String end_label = "\nfEnd"+methodName;
+            function_code += end_label +": ";
+            function_code += "pop eax"; //putting return value in eax
+            function_code += "mov esp,ebp\n";
+            function_code += "pop ebp\n";
+            function_code += "ret\n";
+        }
+        
+        
+        //update function_table
 
 		prg_func_table.add_function(methodName, formals_splitted.length, function_code );
 
@@ -169,10 +199,16 @@ public class BaliCompiler
 
 //TODO: Look at JUMPC to fix this code
 		String while_code = "\n" + while_begin_label + ": \n" + while_predicate; 
-		while_code += "JUMPC " +  predicate_true_label + "\n";
-		while_code += "\n" + predicate_true_label + ": \n" + while_body;
-		while_code += "JUMP " + while_begin_label + "\n";
-		return while_code;
+	    if (GEN_SAM_CODE) {	
+            while_code += "JUMPC " +  predicate_true_label + "\n";
+            while_code += "\n" + predicate_true_label + ": \n" + while_body;
+            while_code += "JUMP " + while_begin_label + "\n";
+	    }else if (GEN_X86_CODE) {
+            while_code += "------>jumping conditionally need to get fix \n";
+            while_code += "\n" + predicate_true_label + ": \n" + while_body;
+            while_code += "jmp " + while_begin_label + "\n";
+        }
+        return while_code;
 	}
 
 	String getIf(SamTokenizer f, symbol_table method_symbol_table){
@@ -187,8 +223,15 @@ public class BaliCompiler
 		label_counter +=1;
 		String end_true_label =  "Label" + label_counter;
 		label_counter +=1;
-		String if_true = "JUMPC " + true_label + "\n";
-		String if_false = "JUMP " + end_true_label + "\n";
+	    String if_true = ""; 
+        String if_false = ""; 
+        if(GEN_SAM_CODE) {	
+            if_true = "JUMPC " + true_label + "\n";
+            if_false = "JUMP " + end_true_label + "\n";
+        }else if (GEN_X86_CODE) {
+            if_true = "------>jumping conditionally need to get fix \n";
+            if_false = "jmp " + end_true_label + "\n";
+        }
 
 		//TODO possibly change to getBody 
 
@@ -198,7 +241,7 @@ public class BaliCompiler
 		if_code += if_false;
 		if_code += true_label +": "; 
 		if_code += if_body;
-		if_code += end_true_label;
+		//if_code += end_true_label + ":";
 
 		return if_code;
 	}
@@ -208,8 +251,11 @@ public class BaliCompiler
 		f.match(';');
 
 		String return_label = "fEnd"+(String) function_end_label_ll.getLast();
-
-		exp += "JUMP " + return_label + "\n"; 
+	    if (GEN_SAM_CODE) {	
+            exp += "JUMP " + return_label + "\n"; 
+        }else if (GEN_X86_CODE) {
+            ;
+        }
 		return exp;
 	}
 	//TODO: if then else 
@@ -221,7 +267,11 @@ public class BaliCompiler
 		String exp = ""; 
 		switch (f.peekAtKind()) {
 			case INTEGER: //E -> integer
-				return "PUSHIMM "+f.getInt() + "\n";
+			    if(GEN_SAM_CODE) {
+                    return "PUSHIMM "+f.getInt() + "\n";
+                }else if (GEN_X86_CODE) {
+                    return "push "+f.getInt() + "\n";
+                }
 				//return "PUSHIMM " + f.getInt() + "\n";
 			case OPERATOR:  
 				{
@@ -233,38 +283,78 @@ public class BaliCompiler
 								if (nextOp == '+') {
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
-									exp += "ADD\n";
-									f.match(')'); 
+								    if(GEN_SAM_CODE) {	
+                                        exp += "ADD\n"; //SAM_c
+                                    }else if (GEN_X86_CODE) {
+                                        exp += "pop eax\n"; //x86_c
+                                        exp += "pop ebx\n"; //x86_c
+                                        exp += "add ebx, eax\n"; //x86_c
+                                        exp += "push ebx\n"; //x86_c
+                                    }
+                                    f.match(')'); 
 								}else if (nextOp == '-'){
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
-									exp += "SUB\n";
-									f.match(')'); 
+								    if(GEN_SAM_CODE) {	
+                                        exp += "SUB\n"; //SAM_c
+                                    }else if (GEN_X86_CODE) {
+                                        exp += "pop eax\n"; //x86_c
+                                        exp += "pop ebx\n"; //x86_c
+                                        exp += "sub ebx, eax\n"; //x86_c
+                                        exp += "push ebx\n"; //x86_c
+                                    }
+                                    f.match(')'); 
 
 								}else if (nextOp == '*'){
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
-									exp += "TIMES\n";
-									f.match(')'); 
+                                    if(GEN_SAM_CODE) {	
+									    exp += "TIMES\n"; //SAM_c
+                                    }else if (GEN_X86_CODE) {
+                                        exp += "pop eax\n"; //x86_c
+                                        exp += "pop ebx\n"; //x86_c
+                                        exp += "imul ebx, eax\n"; //x86_c
+                                        exp += "push ebx\n"; //x86_c
+                                    }
+                                    
+                                    f.match(')'); 
 
 								} else if(nextOp == '>'){
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
-									exp += "CMP\n";
-									exp += "ISPOS\n";
-									f.match(')'); 
+								    if(GEN_SAM_CODE) {	
+                                        exp += "CMP\n"; //SAM_c
+                                        exp += "ISPOS\n"; //SAM_c
+                                    }else if (GEN_X86_CODE) {
+                                        exp += "pop eax\n"; //x86_c
+                                        exp += "pop ebx\n"; //x86_c
+                                        exp += "cmp eax, ebx\n"; //x86_c
+                                    }
+                                    f.match(')'); 
 								}else if ( nextOp == '<') {
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
-									exp += "CMP\n";
-									exp += "ISPOS\n";
-									f.match(')'); 
+								    if(GEN_SAM_CODE) {	
+                                        exp += "CMP\n"; //SAM_c
+                                        exp += "ISPOS\n"; //SAM_c
+                                    }else if (GEN_X86_CODE) {
+                                        exp += "pop eax\n"; //x86_c
+                                        exp += "pop ebx\n"; //x86_c
+                                        exp += "cmp ebx, eax\n"; //x86_c
+                                    }
+                                    f.match(')'); 
 								}else if ( nextOp == '=') {
 									exp += someExp;
 									exp += getExp(f, method_symbol_table);
-									exp += "CMP\n";
-									exp += "ISNIL\n";
-									f.match(')'); 
+								    if (GEN_SAM_CODE) {	
+                                        exp += "CMP\n"; //SAM_c
+                                        exp += "ISNIL\n"; //SAM_c
+                                    }else if (GEN_X86_CODE) {
+                                        exp += "pop eax\n"; //x86_c
+                                        exp += "pop ebx\n"; //x86_c
+                                        exp += "cmp ebx, eax\n"; //x86_c
+                                    }
+                                    f.match(')'); 
 								}else{
 									System.out.println("this operator " + nextOp + " is not defined\n");
 								}
@@ -285,11 +375,16 @@ public class BaliCompiler
 					String theWord =  f.getWord();
 					f.pushBack();
 
+				    String code = "";
 					if (prg_func_table.has_func(theWord)){ //it's a function call
 						String function_name = f.getWord(); 
-
-
-						char Op = f.getOp(); 
+                        
+                        if (GEN_X86_CODE){
+                            code += "push eax\n"; //x86_c 
+                            code += "push ecx\n"; //x86_c 
+                            code += "push edx\n"; //x86_c 
+                        }
+                        char Op = f.getOp(); 
 						do{
 							getExp(f, method_symbol_table); 
 							switch(f.peekAtKind()){
@@ -297,19 +392,27 @@ public class BaliCompiler
 									{ 
 										char nextOp = f.getOp();
 										if( nextOp == ')') {
-											String code = "";
-											code += "LINK\n";
-											code += "JSR " + function_name + "\n";
-											code += "POPFBR\n";
-											code += "ADDSP " + -1*prg_func_table.get_function_n_args(function_name) + "\n";
-											return code;
+							             				
+                                            if (GEN_SAM_CODE){    
+                                                code += "LINK\n"; //SAM_c
+                                                code += "JSR " + function_name + "\n"; //SAM_c
+                                                code += "POPFBR\n"; //SAM_c
+                                                code += "ADDSP " + -1*prg_func_table.get_function_n_args(function_name) + "\n"; //SAM_c
+                                            }else if (GEN_X86_CODE){
+                                                code += "call\n"; //x86_c 
+                                                code += "add esp" + prg_func_table.get_function_n_args(function_name) + "\n"; //x86_c
+                                                code += "pop edx\n"; //x86_c 
+                                                code += "pop ecx\n"; //x86_c 
+                                                code += "pop eax\n"; //x86_c 
+                                            } 
+                                            return code;
 										}
 									}         
 							}
 						}while(true);   
 					}
 					else{ //variable assignment
-						f.getWord(); 
+                        f.getWord(); 
 						int offSet = 0; 
 						if (method_symbol_table.has_param(theWord)) {
 							offSet = method_symbol_table.get_param_offset(theWord);
@@ -319,8 +422,17 @@ public class BaliCompiler
 							System.out.println("this variable is not defined\n");
 							System.exit(0);
 						}
-						return  "PUSHOFF " + offSet +"\n";//actually loading 
-					}
+                        
+                        
+                        if (GEN_X86_CODE) {
+                            code += "pop eax";
+                            code += "move [ebp - " + offSet + "]" + "\n"; 
+                            return  code;
+                        }else if (GEN_SAM_CODE) {
+                            code += "PUSHOFF " + offSet +"\n";//actually loading 
+                        }
+				        return code;	
+                    }
 				}
 			default:   return "ERROR\n";
 		}
@@ -415,7 +527,11 @@ public class BaliCompiler
 					declaration += getExp(f, method_symbol_table); 
 					f.match(';'); 
 					int offSet = method_symbol_table.get_local_offset(variable_name);
-					declaration += "STOREOFF " + offSet + "\n"; 
+				    if(GEN_SAM_CODE) {	
+                        declaration += "STOREOFF " + offSet + "\n"; 
+                    }else if (GEN_X86_CODE) {
+                        declaration += "mov [ebp -" + offSet + "]" + "\n"; 
+                    }
 					//System.out.print("variable_def: " + variable_definition); 
 					//declaration += variable_definition; 
 					break; 
@@ -460,8 +576,13 @@ public class BaliCompiler
 			System.out.println("this variable is not defined\n");
 			System.exit(0);
 		}
-		variable_definition +=  "STOREOFF " + offSet + "\n"; 
-		f.match(';'); 
+	    if(GEN_SAM_CODE) {	
+            variable_definition +=  "STOREOFF " + offSet + "\n"; 
+		}else if (GEN_X86_CODE) {
+            declaration += "mov [ebp -" + offSet + "]" + "\n"; 
+        }
+
+        f.match(';'); 
 		return variable_definition;
 	}
 
@@ -617,16 +738,17 @@ public class BaliCompiler
         String [] SAM_CTRL_cmds = {"JUMP", "JUMPC"};
         String [] SAM_PC_to_STACK= {"JSR", "JUMPIND", "JSRIND"};
         int j_n,j_z, j_p = 0;
-
+        String label_name = "";
         
         //take care of empty line or label 
-        if (inst_splitted.length == 0) {
+        if (inst_splitted[0].equals("")) {
                 return "\n";
         }else{//is there a label in the line
             String first_word =  inst_splitted[0];
             char[] letters = first_word.toCharArray();
             if (letters[letters.length - 1] == ':'){
                 System.out.println("LABEL FOUND: " + first_word+ "\n");
+                label_name = first_word.substring(0, first_word.length() - 1); 
                 label_detected = true; 
             }
         }
@@ -634,14 +756,23 @@ public class BaliCompiler
 
         //get cmd and operand 
         if (label_detected){
-          if (inst_splitted.length > 1) { //the line only contains the label
-              return inst;
-          }
+            if (prg_func_table.has_func(label_name)) {
+                translated_line += "\n;function defintion\n";
+                translated_line += inst;
+                translated_line += "push ebp\n";
+                translated_line += "mov ebp, esp\n";
+
+            }
+        }
           
-          cmd = inst_splitted[1]; 
-          if (inst_splitted.length > 2) {
-              operand = inst_splitted[2];
-          }
+        if (label_detected){
+            if (inst_splitted.length <= 1) { //the line only contains the label
+                return translated_line; 
+            }
+            cmd = inst_splitted[1]; 
+            if (inst_splitted.length >= 2) {
+                operand = inst_splitted[2];
+            }
         }else{
           cmd = inst_splitted[0]; 
           if (inst_splitted.length > 1) {
@@ -653,16 +784,19 @@ public class BaliCompiler
         //decode the instruction
         if (Arrays.asList(SAM_ALU_cmds).contains(cmd)){
             //SAM_ALU_cmds = ["ADD", "SUB", "TIMES", "ISPOS", "ISNEG", "ISNIL", "CMP"];
-            if (cmd.equals("ISPOS") || cmd.equals("ISNEG") || cmd.equals("ISNIL") || cmd.equals("CMP")){
+            if (cmd.equals("ISPOS") || cmd.equals("ISNEG") || cmd.equals("ISNIL") || cmd.equals("CMP") || cmd.equals("PUSHIMM")){
                 System.out.println("this needs to get fixed later\n"); 
-                translated_line += "pop ebx\n";
                 if (cmd.equals("ISPOS")){
+                    translated_line += "pop ebx\n";
                     translated_line+= "cmp 0, ebx\n";
                 }else if (cmd.equals("ISNEG")){
+                    translated_line += "pop ebx\n";
                     translated_line+= "cmp ebx, 0\n";
                 }else if (cmd.equals("ISNIL")){
+                    translated_line += "pop ebx\n";
                     translated_line+= "cmp 0, ebx\n";
                 }else if (cmd.equals("CMP")){
+                    translated_line += "pop ebx\n";
                     translated_line+= "cmp 0, ebx\n";
                 }else if (cmd.equals("PUSHIMM")){
                     translated_line += "push " + operand + "\n";
@@ -726,14 +860,18 @@ public class BaliCompiler
                 translated_line += "call" + operand +"\n";
             }
             else if (cmd.equals("JUMPIND")){ 
+                
+                //translated_line += "mov esp, ebp\n";
+                translated_line += "pop ebp\n";
+                translated_line += "pop eax\n";
                 translated_line += "ret\n";
             } 
-            else if (cmd.equals("JUMPIND")){ 
+            else if (cmd.equals("JSRIND")){ 
                 /* 
                    translated_line += "pop eax";
                    translated_line += "call eax";
                    */ 
-                System.out.println("JUMPIND should be implemented");
+                System.out.println("JSRIND should be implemented");
             }
         }else if(cmd.equals("STOP")){
             ; 
@@ -747,7 +885,7 @@ public class BaliCompiler
                     System.out.println(cmd);
                     System.exit(0);
                 }else{
-                    System.out.println("this command " + cmd + " is not defined\n");
+                    System.out.println("***ERROR******: this command " + cmd + " is not defined\n");
                     System.out.println("inst is: " + inst +"\n");
                     System.exit(0);
                 }
@@ -756,7 +894,9 @@ public class BaliCompiler
         }
         return translated_line; 
     }
-    public String parse_SAM_code(String prg) {
+    
+    
+    public String parse_SAM_code_and_gen_x86(String prg) {
         //split the string based on the line 
         String[] prg_lines = prg.split("\n");
         String translated_prg = ""; 
@@ -766,4 +906,12 @@ public class BaliCompiler
         System.out.println(translated_prg);
         return translated_prg; 
     }
+
+    /* 
+    public String x86_code_gen(String file_name) {
+        String SAM_code = SAM_code_gen(file_name);
+        String x86_code = parse_SAM_code_and_gen_x86(SAM_code);
+        return x86_code;
+    }
+    */
 }
